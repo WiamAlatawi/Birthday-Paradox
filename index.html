@@ -1,0 +1,698 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Birthday Paradox — الفصل الدراسي</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<style>
+  :root {
+    --bg:     #05091A;
+    --surf:   #0C1228;
+    --indigo: #6C63FF;
+    --gold:   #FFD166;
+    --cyan:   #06D6A0;
+    --rose:   #EF476F;
+    --white:  #EEF2FF;
+    --muted:  #7A84A0;
+    --border: rgba(108,99,255,.2);
+    --card:   rgba(108,99,255,.07);
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html,body{height:100%;overflow:hidden;}
+
+  body{
+    background:var(--bg);
+    color:var(--white);
+    font-family:'Segoe UI',system-ui,sans-serif;
+    display:grid;
+    grid-template-rows:auto 1fr;
+    height:100vh;
+  }
+
+  /* ── CANVAS ── */
+  #stars{position:fixed;inset:0;pointer-events:none;z-index:0;}
+
+  /* ── HEADER ── */
+  header{
+    position:relative;z-index:2;
+    display:flex;align-items:center;justify-content:space-between;
+    padding:14px 28px;
+    border-bottom:1px solid var(--border);
+    background:rgba(5,9,26,.8);
+    backdrop-filter:blur(12px);
+    gap:20px;
+  }
+  .logo{
+    font-size:20px;font-weight:900;white-space:nowrap;
+    background:linear-gradient(120deg,var(--white),var(--indigo));
+    -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+  }
+  .logo span{font-size:12px;font-weight:400;opacity:.6;display:block;-webkit-text-fill-color:var(--muted);color:var(--muted);}
+
+  /* probability bar in header */
+  .prob-bar-wrap{flex:1;max-width:340px;}
+  .prob-bar-label{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:5px;}
+  .prob-bar-track{height:7px;background:var(--surf);border-radius:4px;overflow:hidden;}
+  .prob-bar-fill{height:100%;border-radius:4px;background:linear-gradient(to right,var(--indigo),var(--cyan),var(--gold));transition:width .6s ease;}
+
+  .count-pill{
+    display:flex;align-items:center;gap:8px;
+    background:var(--card);border:1px solid var(--border);
+    border-radius:50px;padding:6px 18px;
+    font-size:13px;color:var(--muted);white-space:nowrap;
+  }
+  .count-pill strong{font-size:22px;font-weight:900;font-family:monospace;color:var(--gold);}
+
+  /* ── MAIN LAYOUT ── */
+  .layout{
+    position:relative;z-index:2;
+    display:grid;
+    grid-template-columns:360px 1fr 300px;
+    gap:0;
+    height:100%;
+    overflow:hidden;
+  }
+
+  /* ── PANELS ── */
+  .panel{
+    padding:20px;
+    overflow-y:auto;
+    border-left:1px solid var(--border);
+  }
+  .panel:first-child{border-left:none;}
+  .panel::-webkit-scrollbar{width:3px;}
+  .panel::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
+
+  .panel-title{
+    font-size:11px;letter-spacing:3px;text-transform:uppercase;
+    color:var(--indigo);margin-bottom:16px;font-family:monospace;
+  }
+
+  /* ── ENTRY FORM ── */
+  .entry-card{
+    background:var(--card);border:1px solid var(--border);
+    border-radius:18px;padding:22px;
+  }
+  .field{margin-bottom:14px;}
+  .field label{display:block;font-size:11px;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:7px;}
+  .field input{
+    width:100%;padding:13px 16px;
+    border-radius:10px;border:1px solid var(--border);
+    background:var(--surf);color:var(--white);
+    font-size:15px;font-family:inherit;outline:none;
+    transition:border-color .2s,box-shadow .2s;
+  }
+  .field input:focus{border-color:var(--indigo);box-shadow:0 0 0 3px rgba(108,99,255,.15);}
+  .field input[type=date]{direction:ltr;}
+
+  .add-btn{
+    width:100%;padding:14px;border-radius:12px;border:none;
+    background:var(--indigo);color:#fff;
+    font-size:16px;font-weight:700;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;gap:8px;
+    transition:all .2s;font-family:inherit;
+    box-shadow:0 4px 20px rgba(108,99,255,.3);
+  }
+  .add-btn:hover{background:#7B74FF;transform:translateY(-2px);box-shadow:0 8px 28px rgba(108,99,255,.4);}
+  .add-btn:active{transform:translateY(0);}
+
+  /* ── STUDENT ROSTER ── */
+  .roster{display:flex;flex-direction:column;gap:7px;margin-top:18px;}
+  .s-row{
+    display:flex;align-items:center;gap:10px;
+    padding:10px 13px;border-radius:10px;
+    background:var(--surf);border:1px solid transparent;
+    animation:slideIn .3s ease;transition:border-color .4s,background .4s;
+    cursor:default;
+  }
+  .s-row.match{
+    border-color:var(--gold);
+    background:rgba(255,209,102,.07);
+    animation:matchFlash .5s ease;
+  }
+  @keyframes slideIn{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}
+  @keyframes matchFlash{0%{transform:scale(1)}40%{transform:scale(1.04);box-shadow:0 0 18px rgba(255,209,102,.4)}100%{transform:scale(1)}}
+
+  .s-avatar{
+    width:33px;height:33px;border-radius:50%;flex-shrink:0;
+    display:flex;align-items:center;justify-content:center;
+    font-weight:800;font-size:12px;
+  }
+  .s-name{font-size:13px;font-weight:600;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .s-date{font-size:11px;color:var(--muted);font-family:monospace;direction:ltr;flex-shrink:0;}
+  .s-badge{
+    font-size:9px;padding:2px 7px;border-radius:10px;
+    border:1px solid var(--gold);color:var(--gold);
+    background:rgba(255,209,102,.1);white-space:nowrap;flex-shrink:0;
+  }
+
+  /* ── CENTER: NETWORK VIZ ── */
+  #viz-wrap{
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    height:100%;position:relative;
+    background:radial-gradient(ellipse at center, rgba(108,99,255,.06) 0%, transparent 70%);
+  }
+  #net-svg{width:100%;height:100%;display:block;}
+
+  /* big prob display (center overlay) */
+  .center-stat{
+    position:absolute;top:18px;left:50%;transform:translateX(-50%);
+    text-align:center;pointer-events:none;
+  }
+  .center-prob{
+    font-size:clamp(36px,5vw,64px);font-weight:900;font-family:monospace;
+    background:linear-gradient(135deg,var(--white),var(--indigo));
+    -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+    line-height:1;
+  }
+  .center-label{font-size:11px;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin-top:4px;}
+
+  /* match explosion overlay */
+  #match-overlay{
+    position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    pointer-events:none;opacity:0;transition:opacity .4s;
+  }
+  #match-overlay.show{opacity:1;}
+  .match-burst{
+    text-align:center;
+    background:rgba(5,9,26,.85);border:1px solid var(--gold);
+    border-radius:24px;padding:28px 40px;
+    box-shadow:0 0 60px rgba(255,209,102,.2);
+    animation:burstIn .5s cubic-bezier(.34,1.56,.64,1) both;
+  }
+  @keyframes burstIn{from{transform:scale(.7);opacity:0}to{transform:scale(1);opacity:1}}
+  .match-burst .emoji{font-size:52px;margin-bottom:8px;}
+  .match-burst h2{font-size:clamp(18px,3vw,30px);font-weight:900;color:var(--gold);}
+  .match-burst p{font-size:14px;color:var(--muted);margin-top:6px;line-height:1.6;}
+
+  /* ── RIGHT: RESULTS ── */
+  .result-hero{
+    text-align:center;padding:20px 16px;border-radius:14px;
+    border:1px solid var(--border);background:var(--card);margin-bottom:16px;
+  }
+  .result-hero.active{border-color:var(--gold);background:rgba(255,209,102,.07);animation:glowPulse 2.5s ease-in-out infinite;}
+  @keyframes glowPulse{0%,100%{box-shadow:0 0 0 0 rgba(255,209,102,0)}50%{box-shadow:0 0 24px 4px rgba(255,209,102,.15)}}
+  .hero-emoji{font-size:40px;margin-bottom:8px;}
+  .hero-pct{font-size:42px;font-weight:900;font-family:monospace;color:var(--gold);line-height:1;}
+  .hero-label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:2px;margin-top:4px;}
+  .hero-msg{font-size:13px;color:var(--muted);margin-top:10px;line-height:1.6;}
+
+  .match-list{display:flex;flex-direction:column;gap:8px;}
+  .match-card{
+    display:flex;align-items:center;gap:12px;
+    padding:12px 16px;border-radius:12px;
+    background:rgba(255,209,102,.07);border:1px solid rgba(255,209,102,.25);
+    animation:fadeUp .4s ease both;
+  }
+  @keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+  .match-icon{font-size:26px;flex-shrink:0;}
+  .match-names{font-size:14px;font-weight:700;color:var(--gold);}
+  .match-date{font-size:12px;color:var(--muted);font-family:monospace;margin-top:2px;direction:ltr;}
+
+  .no-match-msg{
+    text-align:center;padding:30px 16px;
+    color:var(--muted);font-size:14px;line-height:1.8;
+  }
+
+  /* month strip */
+  .month-strip{
+    display:grid;grid-template-columns:repeat(4,1fr);gap:5px;
+    margin-top:18px;
+  }
+  .mc{
+    padding:7px 5px;border-radius:7px;text-align:center;
+    background:var(--surf);border:1px solid transparent;
+    font-size:10px;color:var(--muted);transition:all .3s;
+  }
+  .mc.has{border-color:rgba(108,99,255,.4);color:var(--white);}
+  .mc.hit{border-color:var(--gold);background:rgba(255,209,102,.1);color:var(--gold);}
+  .mc-dots{display:flex;flex-wrap:wrap;justify-content:center;gap:2px;margin-top:3px;}
+  .mc-dot{width:5px;height:5px;border-radius:50%;background:var(--indigo);}
+  .mc-dot.m{background:var(--gold);}
+
+  /* bottom action row */
+  .action-row{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;}
+  .btn-sm{
+    padding:8px 14px;border-radius:8px;border:1px solid var(--border);
+    background:transparent;color:var(--white);font-size:12px;
+    cursor:pointer;transition:all .2s;font-family:inherit;
+  }
+  .btn-sm:hover{border-color:var(--indigo);background:rgba(108,99,255,.1);}
+  .btn-danger{border-color:rgba(239,71,111,.3);color:var(--rose);}
+  .btn-danger:hover{border-color:var(--rose);background:rgba(239,71,111,.1);}
+
+  /* ── CONFETTI ── */
+  #confetti{position:fixed;inset:0;pointer-events:none;z-index:999;}
+
+  /* ── TOAST ── */
+  #toast{
+    position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(60px);
+    background:var(--surf);border:1px solid var(--border);border-radius:40px;
+    padding:11px 26px;font-size:14px;z-index:1000;
+    transition:transform .35s cubic-bezier(.34,1.56,.64,1);pointer-events:none;white-space:nowrap;
+  }
+  #toast.show{transform:translateX(-50%) translateY(0);}
+</style>
+</head>
+<body>
+<canvas id="stars"></canvas>
+<canvas id="confetti"></canvas>
+<div id="toast"></div>
+
+<!-- HEADER -->
+<header>
+  <div class="logo">
+    🎂 Birthday Paradox
+    <span>تجربة حية مع الفصل</span>
+  </div>
+
+  <div class="prob-bar-wrap">
+    <div class="prob-bar-label">
+      <span>احتمال التطابق</span>
+      <span id="hdr-prob">0%</span>
+    </div>
+    <div class="prob-bar-track"><div class="prob-bar-fill" id="hdr-bar" style="width:0%"></div></div>
+  </div>
+
+  <div class="count-pill">
+    <strong id="hdr-count">0</strong>
+    <span>/ 26 طالب</span>
+  </div>
+</header>
+
+<!-- MAIN -->
+<div class="layout">
+
+  <!-- LEFT: INPUT + ROSTER -->
+  <div class="panel">
+    <div class="panel-title">تسجيل الطالب</div>
+
+    <div class="entry-card">
+      <div class="field">
+        <label>الاسم</label>
+        <input id="in-name" type="text" placeholder="أدخل اسمك..." maxlength="25" autocomplete="off"/>
+      </div>
+      <div class="field">
+        <label>تاريخ الميلاد</label>
+        <input id="in-date" type="date"/>
+      </div>
+      <button class="add-btn" onclick="addStudent()">
+        <span>＋</span> سجّل
+      </button>
+    </div>
+
+    <div class="roster" id="roster"></div>
+  </div>
+
+  <!-- CENTER: NETWORK -->
+  <div id="viz-wrap">
+    <div class="center-stat">
+      <div class="center-prob" id="ctr-prob">0%</div>
+      <div class="center-label">احتمال وجود تطابق</div>
+    </div>
+    <svg id="net-svg"></svg>
+    <div id="match-overlay">
+      <div class="match-burst" id="match-burst">
+        <div class="emoji">🎉</div>
+        <h2 id="burst-title">تطابق!</h2>
+        <p id="burst-detail"></p>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT: RESULTS -->
+  <div class="panel">
+    <div class="panel-title">النتائج</div>
+
+    <div class="result-hero" id="result-hero">
+      <div class="hero-emoji" id="hero-emoji">🔍</div>
+      <div class="hero-pct" id="hero-pct">0%</div>
+      <div class="hero-label">احتمال التطابق</div>
+      <div class="hero-msg" id="hero-msg">سجّل أول طالب للبدء</div>
+    </div>
+
+    <div id="matches-section">
+      <div class="no-match-msg" id="no-match-msg">لا يوجد تطابق بعد...<br>كل إضافة ترفع الاحتمال 📈</div>
+      <div class="match-list" id="match-list"></div>
+    </div>
+
+    <div class="month-strip" id="month-strip"></div>
+
+    <div class="action-row">
+      <button class="btn-sm" onclick="exportTxt()">📤 تصدير</button>
+      <button class="btn-sm btn-danger" onclick="resetAll()">🗑 مسح الكل</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ═══════════════════════════════
+   STATE
+═══════════════════════════════ */
+let students = [];
+try { students = JSON.parse(localStorage.getItem('bp_students') || '[]'); } catch(e){}
+
+const MONTHS = ['يناير','فبراير','مارس','أبريل','مايو','يونيو',
+                'يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+const PALETTE = ['#6C63FF','#06D6A0','#FFD166','#EF476F','#FF9F43',
+                 '#48dbfb','#ff6b9d','#c0392b','#27ae60','#8e44ad',
+                 '#e67e22','#2980b9','#1abc9c','#d35400','#7f8c8d','#2c3e50'];
+
+let simulation = null;
+let prevMatchCount = 0;
+
+/* ═══════════════════════════════
+   BACKGROUND STARS
+═══════════════════════════════ */
+(function(){
+  const c = document.getElementById('stars');
+  const ctx = c.getContext('2d');
+  let W, H, pts;
+  function init(){
+    W = c.width = window.innerWidth;
+    H = c.height = window.innerHeight;
+    pts = Array.from({length:55},()=>({
+      x:Math.random()*W, y:Math.random()*H,
+      vx:(Math.random()-.5)*.25, vy:(Math.random()-.5)*.25
+    }));
+  }
+  function draw(){
+    ctx.clearRect(0,0,W,H);
+    pts.forEach(p=>{
+      p.x+=p.vx; p.y+=p.vy;
+      if(p.x<0||p.x>W)p.vx*=-1;
+      if(p.y<0||p.y>H)p.vy*=-1;
+    });
+    pts.forEach((a,i)=>pts.slice(i+1).forEach(b=>{
+      const d=Math.hypot(a.x-b.x,a.y-b.y);
+      if(d<130){
+        ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);
+        ctx.strokeStyle=`rgba(108,99,255,${.12*(1-d/130)})`;
+        ctx.lineWidth=.7;ctx.stroke();
+      }
+    }));
+    pts.forEach(p=>{
+      ctx.beginPath();ctx.arc(p.x,p.y,1.5,0,Math.PI*2);
+      ctx.fillStyle='rgba(108,99,255,.35)';ctx.fill();
+    });
+    requestAnimationFrame(draw);
+  }
+  init(); draw();
+  window.addEventListener('resize',init);
+})();
+
+/* ═══════════════════════════════
+   CORE LOGIC
+═══════════════════════════════ */
+function birthdayProb(n){
+  if(n<=1)return 0;
+  let p=1;
+  for(let i=0;i<n;i++) p*=(365-i)/365;
+  return 1-p;
+}
+
+function getMatches(){
+  const out=[];
+  for(let i=0;i<students.length;i++)
+    for(let j=i+1;j<students.length;j++)
+      if(students[i].m===students[j].m && students[i].d===students[j].d)
+        out.push({a:students[i],b:students[j]});
+  return out;
+}
+
+function fmtDate(m,d){ return `${d} ${MONTHS[m-1]}`; }
+
+/* ═══════════════════════════════
+   ADD STUDENT
+═══════════════════════════════ */
+function addStudent(){
+  const name = document.getElementById('in-name').value.trim();
+  const dateVal = document.getElementById('in-date').value;
+  if(!name){ toast('⚠️ أدخل الاسم'); return; }
+  if(!dateVal){ toast('⚠️ اختر تاريخ الميلاد'); return; }
+  if(students.length>=26){ toast('✓ اكتمل الفصل — 26 طالب!'); return; }
+
+  const dObj = new Date(dateVal);
+  const student = {
+    name,
+    birthday: dateVal,
+    m: dObj.getMonth()+1,
+    d: dObj.getDate(),
+    color: PALETTE[students.length % PALETTE.length]
+  };
+
+  // duplicate check
+  if(students.find(s=>s.name===name && s.birthday===dateVal)){
+    toast('هذا الطالب مسجل بالفعل');return;
+  }
+
+  students.push(student);
+  localStorage.setItem('bp_students', JSON.stringify(students));
+
+  document.getElementById('in-name').value='';
+  document.getElementById('in-date').value='';
+  document.getElementById('in-name').focus();
+
+  render();
+  toast(`✓ تم تسجيل ${name}!`);
+}
+
+// Enter key
+document.addEventListener('keydown', e=>{
+  if(e.key==='Enter') addStudent();
+});
+
+/* ═══════════════════════════════
+   RENDER
+═══════════════════════════════ */
+function render(){
+  const n = students.length;
+  const prob = birthdayProb(n);
+  const matches = getMatches();
+  const matchedSet = new Set(matches.flatMap(m=>[m.a.name+m.a.birthday, m.b.name+m.b.birthday]));
+
+  /* header */
+  document.getElementById('hdr-count').textContent = n;
+  document.getElementById('hdr-prob').textContent = (prob*100).toFixed(1)+'%';
+  document.getElementById('hdr-bar').style.width = Math.min(prob*100,100)+'%';
+
+  /* center */
+  const cprob = document.getElementById('ctr-prob');
+  cprob.textContent = (prob*100).toFixed(1)+'%';
+  cprob.style.background = prob>=.5
+    ? 'linear-gradient(135deg,#FFD166,#EF476F)'
+    : 'linear-gradient(135deg,#EEF2FF,#6C63FF)';
+  cprob.style.webkitBackgroundClip='text';
+  cprob.style.backgroundClip='text';
+
+  /* hero */
+  const heroEl = document.getElementById('result-hero');
+  heroEl.className = 'result-hero' + (matches.length>0?' active':'');
+  document.getElementById('hero-emoji').textContent =
+    matches.length>0 ? '🎉' : prob>=.5 ? '🎯' : prob>=.2 ? '📈' : '🔍';
+  document.getElementById('hero-pct').textContent = (prob*100).toFixed(1)+'%';
+  document.getElementById('hero-msg').textContent =
+    n===0 ? 'سجّل أول طالب للبدء' :
+    matches.length>0 ? `${matches.length} زوج يتشاركان نفس يوم الميلاد! 🎂` :
+    n<10 ? `${n} طلاب — الاحتمال يرتفع مع كل إضافة` :
+    n<23 ? `اقتربنا! ${26-n} طالب متبقٍ للاكتمال` :
+    `أكثر من نصف الاحتمال — البارادوكس يثبت نفسه!`;
+
+  /* match list */
+  document.getElementById('no-match-msg').style.display = matches.length ? 'none' : 'block';
+  document.getElementById('match-list').innerHTML = matches.map((m,i)=>`
+    <div class="match-card" style="animation-delay:${i*.1}s">
+      <div class="match-icon">🎂</div>
+      <div>
+        <div class="match-names">${m.a.name} & ${m.b.name}</div>
+        <div class="match-date">${fmtDate(m.a.m,m.a.d)}</div>
+      </div>
+    </div>`).join('');
+
+  /* burst overlay: show when new match found */
+  if(matches.length > prevMatchCount && prevMatchCount !== null){
+    const newest = matches[matches.length-1];
+    document.getElementById('burst-title').textContent = '🎉 تطابق وُجد!';
+    document.getElementById('burst-detail').textContent =
+      `${newest.a.name} و ${newest.b.name}\nيشتركان في ${fmtDate(newest.a.m,newest.a.d)}`;
+    const ov = document.getElementById('match-overlay');
+    ov.classList.add('show');
+    confetti();
+    setTimeout(()=>ov.classList.remove('show'),4000);
+  }
+  prevMatchCount = matches.length;
+
+  /* roster */
+  document.getElementById('roster').innerHTML = students.map((s,i)=>`
+    <div class="s-row ${matchedSet.has(s.name+s.birthday)?'match':''}">
+      <div class="s-avatar" style="background:${s.color}20;border:2px solid ${s.color};color:${s.color};">
+        ${s.name.slice(0,2)}
+      </div>
+      <span class="s-name">${s.name}</span>
+      <span class="s-date">${fmtDate(s.m,s.d)}</span>
+      ${matchedSet.has(s.name+s.birthday)?'<span class="s-badge">تطابق</span>':''}
+    </div>`).join('');
+
+  /* month strip */
+  const matchMonths = new Set(matches.map(m=>m.a.m));
+  document.getElementById('month-strip').innerHTML = MONTHS.map((name,i)=>{
+    const mNum = i+1;
+    const mStudents = students.filter(s=>s.m===mNum);
+    const isMatch = matchMonths.has(mNum);
+    return `<div class="mc ${mStudents.length?'has':''} ${isMatch?'hit':''}">
+      ${name.slice(0,3)}
+      <div class="mc-dots">${mStudents.map(s=>`<div class="mc-dot ${isMatch?'m':''}"></div>`).join('')}</div>
+    </div>`;
+  }).join('');
+
+  /* network */
+  drawNetwork(matches, matchedSet);
+}
+
+/* ═══════════════════════════════
+   D3 NETWORK
+═══════════════════════════════ */
+function drawNetwork(matches, matchedSet){
+  const svgEl = document.getElementById('net-svg');
+  const W = svgEl.clientWidth, H = svgEl.clientHeight;
+  const svg = d3.select('#net-svg');
+
+  if(students.length===0){
+    svg.selectAll('*').remove();
+    svg.append('text')
+      .attr('x',W/2).attr('y',H/2).attr('text-anchor','middle')
+      .attr('fill','rgba(120,130,160,.4)').attr('font-size',18)
+      .text('سيظهر هنا مخطط الشبكة بعد التسجيل');
+    return;
+  }
+
+  const nodes = students.map((s,i)=>({...s,id:i}));
+  /* only draw match links — keeps it clean */
+  const links = matches.map(m=>({
+    source: students.findIndex(s=>s.name===m.a.name&&s.birthday===m.a.birthday),
+    target: students.findIndex(s=>s.name===m.b.name&&s.birthday===m.b.birthday)
+  }));
+
+  svg.selectAll('*').remove();
+  const lg = svg.append('g').attr('class','links');
+  const ng = svg.append('g').attr('class','nodes');
+
+  if(simulation) simulation.stop();
+  simulation = d3.forceSimulation(nodes)
+    .force('link', d3.forceLink(links).id(d=>d.id).distance(110))
+    .force('charge', d3.forceManyBody().strength(-90))
+    .force('center', d3.forceCenter(W/2, H/2))
+    .force('collision', d3.forceCollide(28))
+    .on('tick', tick);
+
+  function tick(){
+    lg.selectAll('line').data(links)
+      .join(en=>en.append('line')
+        .attr('stroke',()=>'#FFD166').attr('stroke-width',2.5).attr('opacity',.8)
+        .attr('stroke-dasharray','none'))
+      .attr('x1',d=>clamp(d.source.x,20,W-20)).attr('y1',d=>clamp(d.source.y,20,H-20))
+      .attr('x2',d=>clamp(d.target.x,20,W-20)).attr('y2',d=>clamp(d.target.y,20,H-20));
+
+    ng.selectAll('g.node').data(nodes,d=>d.id)
+      .join(en=>{
+        const g = en.append('g').attr('class','node').attr('cursor','pointer');
+        g.append('circle').attr('r',0)
+          .transition().duration(500).attr('r',18);
+        g.append('text')
+          .attr('text-anchor','middle').attr('dy','.35em')
+          .attr('font-size',10).attr('fill','#fff')
+          .attr('pointer-events','none');
+        g.call(d3.drag()
+          .on('start',(ev,d)=>{if(!ev.active)simulation.alphaTarget(.3).restart();d.fx=d.x;d.fy=d.y;})
+          .on('drag',(ev,d)=>{d.fx=ev.x;d.fy=ev.y;})
+          .on('end',(ev,d)=>{if(!ev.active)simulation.alphaTarget(0);d.fx=null;d.fy=null;}));
+        return g;
+      })
+      .attr('transform',d=>`translate(${clamp(d.x,20,W-20)},${clamp(d.y,20,H-20)})`);
+
+    ng.selectAll('g.node circle')
+      .attr('fill',d=>matchedSet.has(d.name+d.birthday)?'rgba(255,209,102,.15)':d.color+'20')
+      .attr('stroke',d=>matchedSet.has(d.name+d.birthday)?'#FFD166':d.color)
+      .attr('stroke-width',d=>matchedSet.has(d.name+d.birthday)?2.5:1.8);
+
+    ng.selectAll('g.node text').text(d=>d.name.slice(0,2));
+  }
+}
+
+function clamp(v,lo,hi){return Math.max(lo,Math.min(hi,v));}
+
+/* ═══════════════════════════════
+   CONFETTI
+═══════════════════════════════ */
+function confetti(){
+  const c = document.getElementById('confetti');
+  const ctx = c.getContext('2d');
+  c.width=window.innerWidth; c.height=window.innerHeight;
+  const pcs = Array.from({length:130},()=>({
+    x:Math.random()*c.width, y:-15,
+    w:7+Math.random()*9, h:3+Math.random()*5,
+    r:Math.random()*Math.PI*2, vr:(Math.random()-.5)*.18,
+    vy:3.5+Math.random()*4, vx:(Math.random()-.5)*3.5,
+    col:['#FFD166','#6C63FF','#06D6A0','#EF476F','#FF9F43'][Math.floor(Math.random()*5)],
+    life:1
+  }));
+  let f=0;
+  (function draw(){
+    ctx.clearRect(0,0,c.width,c.height);
+    let alive=false;
+    pcs.forEach(p=>{
+      p.y+=p.vy;p.x+=p.vx;p.r+=p.vr;p.life=Math.max(0,1-p.y/c.height*1.2);
+      if(p.y<c.height+20){alive=true;}
+      ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.r);
+      ctx.globalAlpha=p.life;ctx.fillStyle=p.col;
+      ctx.fillRect(-p.w/2,-p.h/2,p.w,p.h);ctx.restore();
+    });
+    if(alive&&f<220){f++;requestAnimationFrame(draw);}
+    else ctx.clearRect(0,0,c.width,c.height);
+  })();
+}
+
+/* ═══════════════════════════════
+   UTILS
+═══════════════════════════════ */
+function toast(msg,ms=2800){
+  const el=document.getElementById('toast');
+  el.textContent=msg;el.classList.add('show');
+  clearTimeout(el._t);el._t=setTimeout(()=>el.classList.remove('show'),ms);
+}
+
+function exportTxt(){
+  const matches=getMatches();
+  let t=`Birthday Paradox — نتائج الفصل\n${'─'.repeat(35)}\n`;
+  t+=`عدد الطلاب: ${students.length}\n`;
+  t+=`احتمال التطابق: ${(birthdayProb(students.length)*100).toFixed(1)}%\n`;
+  t+=`عدد التطابقات: ${matches.length}\n\n`;
+  t+=`قائمة الطلاب:\n`;
+  students.forEach((s,i)=>t+=`  ${i+1}. ${s.name} — ${fmtDate(s.m,s.d)}\n`);
+  if(matches.length){
+    t+=`\nالأزواج المتطابقة:\n`;
+    matches.forEach(m=>t+=`  🎂 ${m.a.name} & ${m.b.name} (${fmtDate(m.a.m,m.a.d)})\n`);
+  }
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([t],{type:'text/plain;charset=utf-8'}));
+  a.download='birthday-results.txt';a.click();
+  toast('✅ تم التصدير');
+}
+
+function resetAll(){
+  if(!confirm('مسح جميع بيانات الطلاب؟'))return;
+  students=[];prevMatchCount=0;
+  localStorage.removeItem('bp_students');
+  render();toast('🗑 تم المسح');
+}
+
+/* ═══════════════════════════════
+   INIT
+═══════════════════════════════ */
+// build month strip skeleton
+document.getElementById('month-strip').innerHTML='';
+render();
+</script>
+</body>
+</html>
